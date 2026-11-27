@@ -190,7 +190,7 @@ export default class MacrosTile extends Mixins(MacroRunMixin, OverviewMixin) {
     return defaultQuick(this.have).slice(0, this.slots.shown).map(d => {
       const macro = this.arrangedMacros.find(m => m.name === d.found)
       const send = d.gcode ?? d.found
-      const go = d.id === 'home' ? () => this.home() : macro && !d.gcode ? () => this.run(macro) : () => { this.sendTypedGcode(send) }
+      const go = macro && !d.gcode ? () => this.run(macro) : () => { this.sendTypedGcode(send) }
       return { key: d.id, title: d.title, icon: d.icon, tip: d.gcode ? `${d.title} (${d.gcode})` : d.found, disabled: !ready || (this.busy && (QUICK_BUSY_BLOCKED.has(d.id) || !!macro?.disabledWhilePrinting)), go }
     })
   }

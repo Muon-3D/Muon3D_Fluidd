@@ -13,7 +13,7 @@ const heavy = { 'overview-stage': true, 'thermal-graph': true, 'first-layer-nudg
 const allIds = overviewTiles.map(t => t.id)
 const defaults = defaultLayout(widgetsFor(overviewTiles, true))
 const onIds = defaults.tiles.map(t => t.id)
-const mine = { version: 2, savedAt: 5, tiles: [{ id: 'bed', span: 6, rows: 1 }, { id: 'stage', span: 12, rows: 2 }], hidden: allIds.filter(i => i !== 'bed' && i !== 'stage') }
+const mine = { version: 3, savedAt: 5, tiles: [{ id: 'bed', span: 6, rows: 1 }, { id: 'stage', span: 12, rows: 2 }], hidden: allIds.filter(i => i !== 'bed' && i !== 'stage') }
 
 function open (options: { printing?: boolean; layouts?: Record<string, unknown> } = {}) {
   const store = tileStore({ printing: options.printing })
@@ -262,7 +262,7 @@ describe('Overview, edit mode', () => {
     expect(w.findAll('[data-tid="tile-grip"]')).toHaveLength(onIds.length)
     expect(w.findAll('[data-tid="tile-remove"]')).toHaveLength(onIds.length)
     await grip(w, 'mode').trigger('keydown', { key: 'ArrowRight', shiftKey: true })
-    expect(w.find('[data-cell="mode"]').attributes('style')).toContain('--span: 5')
+    expect(w.find('[data-cell="mode"]').attributes('style')).toContain('--span: 3')
     w.destroy()
     vi.unstubAllGlobals()
   })
@@ -306,7 +306,7 @@ describe('Overview, edit mode', () => {
     await w.find('[data-tid="edit-open"]').trigger('click')
     await w.find('[data-tid="edit-reset"]').trigger('click')
     expect(cells(w)).toEqual(onIds)
-    expect(w.find('[data-cell="mode"]').attributes('style')).toContain('--span: 5')
+    expect(w.find('[data-cell="mode"]').attributes('style')).toContain('--span: 3')
     await w.find('[data-tid="edit-done"]').trigger('click')
     expect(saved().tiles).toEqual(defaultLayout(overviewTiles).tiles)
     expect(store.dispatch).toHaveBeenCalledTimes(1)

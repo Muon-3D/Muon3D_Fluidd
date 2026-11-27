@@ -35,6 +35,7 @@ import { EventBus } from '@/eventBus'
 import type { LoadedFilament } from '@/services/jobs/model'
 import { fastPercent, materialMaxFlow, peakFlow, speedChoices, type SpeedChoice } from '@/services/control/speed'
 import type { Move } from '@/store/gcodePreview/types'
+import { homeXYDisabledReason, xyMoveDisabledReason } from '@/services/control/home-readiness'
 
 /**
  * Ticks when a hand move starts and when its own-motion window ends
@@ -615,6 +616,16 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
     const action = axes === 'Z' ? 'home_z' : axes === 'XY' ? 'home_xy' : 'home'
     if (needParts(this.$store.state.printer.printer, action, () => this.home(axes))) return
     this.sendGcode(axes ? `G28 ${axes.split('').join(' ')}` : 'G28', this.homeWait(axes))
+  }
+
+  /** Why Home XY is disabled, mirroring Klipper's m1_machine / z_power readiness (KAN-6008); '' when allowed or unknown. */
+  get homeXYReason (): string {
+    return homeXYDisabledReason(this.$store.state.printer.printer)
+  }
+
+  /** Why X/Y moves are disabled: z_power says the plate is down and touching (KAN-6008); '' otherwise. */
+  get xyMoveReason (): string {
+    return xyMoveDisabledReason(this.$store.state.printer.printer)
   }
 
   homing (axes = ''): boolean {

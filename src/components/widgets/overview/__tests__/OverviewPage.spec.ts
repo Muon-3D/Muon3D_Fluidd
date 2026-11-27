@@ -45,7 +45,7 @@ describe('Overview page', () => {
     const store = tileStore()
     const w = mount(Overview, tileMount(store, { stubs: { ...tileMount(store).stubs, ...heavy } }))
     const style = w.find('[data-cell="mode"]').attributes('style')
-    expect(style).toContain('--span: 5'); expect(style).toContain('--tablet: 6'); expect(style).toContain('--phone: 2')
+    expect(style).toContain('--span: 3'); expect(style).toContain('--tablet: 6'); expect(style).toContain('--phone: 2')
     w.destroy()
   })
 })

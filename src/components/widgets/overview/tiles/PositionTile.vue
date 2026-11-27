@@ -33,28 +33,6 @@
       >
         <span class="po__top">
           <span class="po__k">{{ a }}</span>
-          <button
-            v-if="!isHomed(a)"
-            type="button"
-            class="po__home"
-            :disabled="!canHome"
-            :aria-label="`Home ${a}`"
-            :title="`Home ${a} (G28 ${a})`"
-            :data-tid="`home-${a.toLowerCase()}`"
-            @click="home(a)"
-          >
-            <v-progress-circular
-              v-if="homing(a)"
-              indeterminate
-              size="12"
-              width="2"
-            />
-            <frame-icon
-              v-else
-              name="home"
-              small
-            />
-          </button>
         </span>
         <span
           v-if="!isHomed(a)"
@@ -105,7 +83,7 @@ import TileShell from './TileShell.vue'
 /**
  * Where the head is, live, and whether it is homed. Press an axis to type a
  * number (it goes through moveTo: the same checks as the Trackpad); an axis that is
- * not homed says so and has its own small Home. Motors off is the small icon in the
+ * not homed says so (Home all is in the Trackpad header; KAN-5980). Motors off is the small icon in the
  * header. The endstops are not in a menu here any more.
  */
 @Component({ components: { TileShell } })
@@ -133,7 +111,6 @@ export default class PositionTile extends Mixins(OverviewMixin) {
 
   shown (i: number): string { return this.known ? this.position[i].toFixed(i === 2 ? 2 : 1) : '—' }
 
-  get canHome (): boolean { return this.controlReady && !this.busy }
   get canEdit (): boolean { return this.controlReady && !this.busy && this.known }
 
   startEdit (axis: string, i: number) {
@@ -179,10 +156,6 @@ export default class PositionTile extends Mixins(OverviewMixin) {
 .po__axis--edit { box-shadow: inset 0 0 0 1.5px var(--m3d-accent); }
 .po__input { width: 100%; min-width: 0; padding: 2px 4px; margin: 0 -4px; border-radius: 8px; background: var(--m3d-fill); color: var(--m3d-text); font-family: var(--m3d-font-mono); font-size: 18px; font-variant-numeric: tabular-nums; outline: none; }
 .po__nohome { color: var(--m3d-warning); font-size: 12px; font-weight: 600; white-space: nowrap; }
-.po__home { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 9px; background: var(--m3d-fill); color: var(--m3d-text); cursor: pointer; }
-.po__home:hover:not(:disabled) { filter: brightness(1.15); }
-.po__home:disabled { opacity: 0.45; cursor: default; }
-.po__home:focus-visible { outline: 2px solid var(--m3d-focus-ring, var(--m3d-accent)); outline-offset: 2px; }
 .po--S .po__val small { display: none; }
 .po--S .po__val b, .po--S .po__input { font-size: 16px; }
 .po__motors { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 9px; background: var(--m3d-fill); color: var(--m3d-text-muted); cursor: pointer; }

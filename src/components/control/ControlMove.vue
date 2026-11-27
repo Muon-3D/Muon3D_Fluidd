@@ -16,9 +16,8 @@
         <button
           type="button"
           class="move__hbtn"
-          :class="{ 'move__hbtn--icon': trackpadOnly }"
           :disabled="busy"
-          :aria-label="trackpadOnly ? 'Home all' : undefined"
+          aria-label="Home all"
           title="Home all (G28)"
           data-tid="home-all"
           @click="home()"
@@ -34,8 +33,32 @@
             name="home"
             small
           />
-          <span v-if="!trackpadOnly">Home all</span>
+          <span>Home all</span>
         </button>
+        <button
+          type="button"
+          class="move__hbtn move__hbtn--xy"
+          :disabled="busy || !!homeXYReason"
+          aria-label="Home XY"
+          :title="homeXYReason || 'Home X and Y (G28 X Y)'"
+          data-tid="home-xy"
+          @click="home('XY')"
+        >
+          <v-progress-circular
+            v-if="homing('XY')"
+            indeterminate
+            size="14"
+            width="2"
+          />
+          <template v-else>
+            XY
+          </template>
+        </button>
+        <span
+          v-if="homeXYReason"
+          class="move__hreason"
+          data-tid="home-xy-reason"
+        >{{ homeXYReason }}</span>
         <button
           v-if="!trackpadOnly"
           type="button"
@@ -127,6 +150,13 @@
       >
         The printer is busy (homing, or running a command). Moving comes back when it finishes.
       </p>
+      <div
+        v-if="xyMoveReason"
+        class="move__callout"
+        data-tid="move-xy-blocked"
+      >
+        <span>{{ xyMoveReason }}</span>
+      </div>
       <div
         v-if="!isHomed('XYZ') && !trackpadOnly"
         class="move__callout"
@@ -546,6 +576,7 @@ export default class ControlMove extends Mixins(ControlMixin, DevGuardMixin) {
   }
 
   get tileHint (): string {
+    if (this.xyMoveReason) return this.xyMoveReason
     if (!this.xyHomedHere) return 'Home first, then tap or drag the bed.'
     if (this.noGo === 'invalid') return 'The notch could not be read, so only raising the head is allowed.'
     return this.releaseOnly ? 'Tap or drag, then let go: the head moves there once.' : 'Drag, and the head follows.'
@@ -668,7 +699,7 @@ export default class ControlMove extends Mixins(ControlMixin, DevGuardMixin) {
   }
 
   get canMoveXY (): boolean {
-    return this.ready && !this.busy && this.xyHomedHere
+    return this.ready && !this.busy && this.xyHomedHere && !this.xyMoveReason
   }
 
   get canMoveZ (): boolean {
@@ -697,6 +728,7 @@ export default class ControlMove extends Mixins(ControlMixin, DevGuardMixin) {
   // -- trackpad --------------------------------------------------------------
 
   get pickHint (): string {
+    if (this.xyMoveReason) return this.xyMoveReason
     if (!this.xyHomedHere) return 'Home all, then tap the bed to pick a spot.'
     if (this.noGo === 'invalid') return 'The notch could not be read, so only raising the head is allowed.'
     return 'Tap the bed to pick a spot, then press Move here. Or drag, and the head follows.'
@@ -1227,6 +1259,10 @@ export default class ControlMove extends Mixins(ControlMixin, DevGuardMixin) {
   /* CT-03: the one Home control sits in the header, beside the title, on the Overview and on Control. */
   .move__hhomes {
     display: inline-flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    min-width: 0;
+    max-width: 100%;
     gap: 6px;
   }
 
@@ -1248,11 +1284,26 @@ export default class ControlMove extends Mixins(ControlMixin, DevGuardMixin) {
     &:disabled { opacity: 0.45; cursor: default; }
   }
 
+  /* 320 px phones: the header has no room for the word, so Home all shows the icon alone (its label is the aria-label). */
+  @media (max-width: 340px) {
+    .move__hbtn:not(.move__hbtn--z) { width: 34px; padding: 0; }
+    .move__hbtn:not(.move__hbtn--z) > span { display: none; }
+  }
+
   .move__hbtn--icon,
+  .move__hbtn--xy,
   .move__hbtn--z {
     width: 34px;
     padding: 0;
     font-family: var(--m3d-font-mono);
+  }
+
+  .move__hreason {
+    flex: 1 0 100%;
+    text-align: right;
+    font-size: 12px;
+    opacity: 0.75;
+    align-self: center;
   }
 
   .move__zoffset {

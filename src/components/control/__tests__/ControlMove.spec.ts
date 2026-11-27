@@ -258,6 +258,29 @@ it('Motors off sends M84 at once, and is only in the menu', async () => {
   s.wrapper.destroy()
 })
 
+it('has one Home all (G28) and a Home XY (G28 X Y) in the header (KAN-6008)', async () => {
+  const s = show()
+  expect(s.wrapper.findAll('[data-tid="home-all"]')).toHaveLength(1)
+  await s.wrapper.find('[data-tid="home-all"]').trigger('click')
+  expect(sent()).toEqual(['G28'])
+  await s.wrapper.find('[data-tid="home-xy"]').trigger('click')
+  expect(sent()).toEqual(['G28', 'G28 X Y'])
+  expect(s.wrapper.find('[data-tid="home-xy-reason"]').exists()).toBe(false)
+  s.wrapper.destroy()
+})
+
+it('Home XY is disabled, not hidden, with its reason when Klipper says it is not ready (KAN-6008)', async () => {
+  const s = show()
+  s.vm.$set(s.store.state.printer.printer, 'm1_machine', { ready: { home_xy: false }, missing: { home_xy: ['toolhead_disconnected'] } })
+  await s.wrapper.vm.$nextTick()
+  const btn = s.wrapper.find('[data-tid="home-xy"]')
+  expect(btn.attributes('disabled')).toBeDefined()
+  expect(s.wrapper.find('[data-tid="home-xy-reason"]').text()).toBe('Connect the toolhead first')
+  await btn.trigger('click')
+  expect(sent()).toEqual([])
+  s.wrapper.destroy()
+})
+
 it('has no Home Z between Z+ and Z−: the live Z readout is there; Home Z is beside Home all in the header (CT-03)', () => {
   const s = show()
   expect(s.wrapper.findAll('.move__zcol button').length).toBe(2)

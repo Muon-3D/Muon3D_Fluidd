@@ -280,15 +280,16 @@ test.describe('Movement', () => {
     await expect.poll(() => printer.gcode).toEqual(['G28'])
   })
 
-  test('there is one Home all, and it sends a full G28 (never G28 X Y)', async ({ page, open }) => {
+  test('there is one Home all (G28) and a Home XY that sends G28 X Y (KAN-6008)', async ({ page, open }) => {
     const printer = await usePrinter(page, idle([150, 100, 10]))
     await open('/control')
     await expect(page.getByTestId('control-move').getByRole('button', { name: 'Home all' })).toHaveCount(1)
     await page.getByTestId('home-all').click()
     await expect.poll(() => printer.gcode).toEqual(['G28'])
+    await page.getByTestId('home-xy').click()
+    await expect.poll(() => printer.gcode).toEqual(['G28', 'G28 X Y'])
     await page.getByTestId('move-more').click()
     await expect(page.getByTestId('menu-home-xy')).toHaveCount(0)
-    await expect(page.getByText('Home X and Y')).toHaveCount(0)
   })
 
   test('printing: locked, the trackpad and jog stay but are greyed out and disabled', async ({ page, open }) => {
