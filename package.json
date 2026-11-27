@@ -28,6 +28,7 @@
     "test": "npm run test:unit",
     "test:unit": "vitest --environment jsdom",
     "test:e2e": "playwright test -c e2e/playwright.config.ts",
+    "test:e2e:accounts": "playwright test -c e2e/playwright.accounts.config.ts",
     "test:e2e:year": "playwright test -c e2e/playwright.year.config.ts",
     "test:e2e:first-paint": "playwright test -c e2e/playwright.first-paint.config.ts",
     "type-check": "node --max-old-space-size=6144 ./node_modules/vue-tsc/bin/vue-tsc.js --noEmit -p tsconfig.vitest.json --composite false",

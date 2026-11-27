@@ -28,6 +28,9 @@ interface ImportMetaEnv {
   /** Feature flag, off unless "true": History's year grid and spool ring (services/flags). */
   readonly VITE_CONTROL_YEAR_SPOOL?: string
   readonly VITE_CONTROL_FIRST_PAINT?: string
+  readonly VITE_CONTROL_ACCOUNTS_SIGNIN?: string
+  readonly VITE_CONTROL_ACCOUNTS_E2E_ORIGIN?: string
+  readonly VITE_CONTROL_ACCOUNTS_URL?: string
   readonly VERSION: string
   readonly HASH: string
   /** The full commit this build was made from (vite.config.inject-version.ts). */
