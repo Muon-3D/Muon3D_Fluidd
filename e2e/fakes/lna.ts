@@ -27,7 +27,7 @@ export interface LanAsk { url: string, space: string | null }
  * The mock printer is mid-print. A printer that is printing shows its job, not its route, so the socket says it is
  * idle: `print_stats` and `idle_timeout` wherever they appear in a reply or a notification.
  */
-function idle (text: string): string {
+export function idle (text: string): string {
   let body: unknown
   try { body = JSON.parse(text) } catch { return text }
   const walk = (node: unknown): void => {

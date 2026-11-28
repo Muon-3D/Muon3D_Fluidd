@@ -23,8 +23,6 @@ const HOSTED = 'https://control.e2e.test'
 const SECURE = 'abcdefghijklmnopqrst.muonlan.net'
 const IP = '192.168.1.20'
 const MOCK = `http://localhost:${MOCK_PORT}`
-/** The page's own dev origins: vite (module reload socket) and the mock printer the hosted config points at. */
-const DEV_ORIGINS = [`localhost:${VITE_PORT}`, `localhost:${MOCK_PORT}`]
 
 function webcam (uid: string, streamUrl: string, snapshotUrl: string) {
   return {
@@ -57,18 +55,33 @@ async function nearby (page: Page, addrs: string[]) {
   }))
 }
 
-/** Everything the page asks for from now on: requests and sockets, as the browser reports them. */
+/**
+ * Everything the page asks for, from before it loads: requests, sockets and console messages, as the browser reports
+ * them. `connected()` marks the moment the secure name is up; `after()` is everything past it.
+ */
 function record (page: Page) {
   const urls: string[] = []
-  let on = false
-  page.on('request', r => { if (on) urls.push(r.url()) })
-  page.on('websocket', w => { if (on) urls.push(w.url()) })
-  return { start: () => { on = true }, urls }
+  const console_: string[] = []
+  let cut = 0
+  page.on('request', r => { urls.push(r.url()) })
+  page.on('websocket', w => { urls.push(w.url()) })
+  page.on('console', m => { console_.push(m.text()) })
+  return {
+    urls,
+    console: console_,
+    connected: () => { cut = urls.length },
+    after: () => urls.slice(cut),
+    mixedMessages: () => console_.filter(t => /mixed content/i.test(t))
+  }
 }
 
-/** What is not https/wss and not one of the page's own dev origins. */
+/**
+ * What is not https/wss. Once connected by the secure name there is no excuse for any, the mock printer's origin
+ * included: the only setup step named is the vite dev server's own reload socket, which exists only under test.
+ */
+const SETUP = [new RegExp(`^ws://localhost:${VITE_PORT}/(\\?token=.*)?$`)]
 function mixed (urls: string[]): string[] {
-  return urls.filter(u => /^(http|ws):\/\//i.test(u) && !DEV_ORIGINS.includes(new URL(u).host))
+  return urls.filter(u => /^(http|ws):\/\//i.test(u) && !SETUP.some(re => re.test(u)))
 }
 
 async function connectLocally (page: Page) {
@@ -106,7 +119,7 @@ async function startSecure (page: Page, account: Parameters<typeof useAllRoutes>
   await lna(page, 'granted', IP)
   await useAllRoutes(page, account)
   ;(account.printers[0] as unknown as { secure_name: string }).secure_name = SECURE
-  const secure = await securePrinter(page, { host: SECURE, endpointId: ROUTE_PRINTER.id, name: ROUTE_PRINTER.name, webcams })
+  const secure = await securePrinter(page, { host: SECURE, endpointId: ROUTE_PRINTER.id, name: ROUTE_PRINTER.name, webcams, address: IP })
   await nearby(page, [IP])
   const seen = record(page)
   if (persisted) {
@@ -116,7 +129,6 @@ async function startSecure (page: Page, account: Parameters<typeof useAllRoutes>
       localStorage.setItem('appInstances', JSON.stringify([{ name, apiUrl: `http://${ip}`, socketUrl: `ws://${ip}/websocket`, active: true, endpointId: id }]))
       localStorage.setItem('muonKnownLanAddrs', JSON.stringify({ [id.toLowerCase()]: [ip] }))
     }, [ROUTE_PRINTER.id, ROUTE_PRINTER.name, IP])
-    seen.start()
   }
   await hostedPage(page)
   await page.goto(persisted ? `${HOSTED}/boxwood-367a/camera` : `${HOSTED}/`)
@@ -129,7 +141,7 @@ test.describe('The secure-name route never mixes with http or ws', () => {
     const { seen } = await startSecure(page, account, [webcam('chamber', `http://${IP}/webcam/?action=stream`, `http://${IP}/webcam/?action=snapshot`)])
     await connectLocally(page)
     await expectOnSecureName(page)
-    seen.start()
+    seen.connected()
     await goTo(page, '/camera')
     await expect(page.getByTestId('camera-tile')).toBeVisible()
     await goTo(page, '/')
@@ -145,7 +157,8 @@ test.describe('The secure-name route never mixes with http or ws', () => {
     })
     // The printer's address was never dialled, and nothing else went out unencrypted.
     expect(await lanAsks(page)).toEqual([])
-    expect(mixed(seen.urls)).toEqual([])
+    expect(mixed(seen.after())).toEqual([])
+    expect(seen.mixedMessages()).toEqual([])
     expect(seen.urls.some(u => u.startsWith(`https://${SECURE}/`))).toBe(true)
   })
 
@@ -153,33 +166,42 @@ test.describe('The secure-name route never mixes with http or ws', () => {
     const { secure, seen } = await startSecure(page, account, [webcam('chamber', `http://${IP}/webcam/?action=stream`, `http://${IP}/webcam/?action=snapshot`)])
     await connectLocally(page)
     await expectOnSecureName(page)
-    seen.start()
+    seen.connected()
     await goTo(page, '/camera')
     await expect.poll(() => secure.cameraPaths.some(p => p.startsWith('/webcam/?action=stream'))).toBe(true)
     expect(seen.urls.filter(u => u.includes(IP))).toEqual([])
-    expect(mixed(seen.urls)).toEqual([])
+    expect(mixed(seen.after())).toEqual([])
+    expect(seen.mixedMessages()).toEqual([])
   })
 
   test('a camera that is only reachable over http says it needs a secure address, and is never asked for', async ({ page, account }) => {
     const { seen } = await startSecure(page, account, [webcam('garage', 'http://garage-cam.e2e:8080/stream', 'http://garage-cam.e2e:8080/snapshot')])
     await connectLocally(page)
     await expectOnSecureName(page)
-    seen.start()
+    seen.connected()
     await goTo(page, '/camera')
     await expect(page.getByTestId('camera-needs-secure').first()).toContainText('needs a secure address')
     expect(seen.urls.filter(u => u.includes('garage-cam.e2e'))).toEqual([])
-    expect(mixed(seen.urls)).toEqual([])
+    expect(mixed(seen.after())).toEqual([])
+    expect(seen.mixedMessages()).toEqual([])
   })
 })
 
 test.describe('Old saved state in this browser', () => {
   test('a printer saved at http://<ip> and a remembered address are never dialled by themselves: load, connect by secure name, zero http or ws', async ({ page, account }) => {
     const { seen } = await startSecure(page, account, [], true)
+    // The deep link opened nothing by itself (no http request); the printer is chosen from the list.
+    await allPrinters(page)
     await connectLocally(page)
     await expectOnSecureName(page)
+    // From load to now: the saved address was never asked for (the only http/ws before the secure name is the
+    // hosted test config's own endpoint, the mock printer, which a real hosted page does not have).
+    expect(seen.urls.filter(u => u.includes(IP))).toEqual([])
+    seen.connected()
     await goTo(page, '/camera')
     expect(await lanAsks(page)).toEqual([])
-    expect(mixed(seen.urls)).toEqual([])
+    expect(mixed(seen.after())).toEqual([])
+    expect(seen.mixedMessages()).toEqual([])
   })
 })
 
