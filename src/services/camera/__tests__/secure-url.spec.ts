@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cameraContext, resolveCameraUrl } from '../secure-url'
+import { CAMERA_NEEDS_SECURE, cameraContext, resolveCameraUrl } from '../secure-url'
 
 const HOSTED = 'https://control.muon3d.com/boxwood'
 const SECURE = 'https://abcdefghijklmnopqrst.muonlan.net'
@@ -12,10 +12,15 @@ describe('resolveCameraUrl on the https page', () => {
     expect(r.url.toString()).toBe(`${SECURE}/webcam/?action=stream`)
   })
 
-  it('moves the printer\'s /webcam/ route on another private address too', () => {
-    const r = resolveCameraUrl('http://192.168.1.99/webcam/?action=snapshot', ctx)
-    expect(r.blocked).toBe(false)
-    expect(r.url.toString()).toBe(`${SECURE}/webcam/?action=snapshot`)
+  it('two printers on one network: only this printer own /webcam/ moves, the other printer camera stays blocked', () => {
+    // Boxwood (192.168.1.20, secure name above) is open; Sloe is at 192.168.1.99 and serves /webcam/ too.
+    const mine = resolveCameraUrl('http://192.168.1.20/webcam/?action=snapshot', ctx)
+    expect(mine.blocked).toBe(false)
+    expect(mine.url.toString()).toBe(`${SECURE}/webcam/?action=snapshot`)
+    const other = resolveCameraUrl('http://192.168.1.99/webcam/?action=snapshot', ctx)
+    expect(other.blocked).toBe(true)
+    expect(other.blocked && other.reason).toBe(CAMERA_NEEDS_SECURE)
+    expect(resolveCameraUrl('http://sloe.local/webcam/?action=stream', ctx).blocked).toBe(true)
   })
 
   it('resolves a relative address against the printer, not control.muon3d.com', () => {

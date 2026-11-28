@@ -6,20 +6,10 @@
  * Rules, on an https page only (an http page, the printer's own, is left as it was):
  * - A relative address is the printer's: it is resolved against the printer's own origin (the secure name), not the
  *   page's.
- * - An `http://` address that points at the same printer (its own host, an address it reported, or its `/webcam/`
- *   route on a private address) is moved onto the printer's origin, which is https.
+ * - An `http://` address that points at the same printer (its own host, or an address it reported or the browser
+ *   learned for it) is moved onto the printer's origin, which is https. Another printer's address is not.
  * - Any other `http://` or `ws://` address cannot be made secure: it is blocked, and the page says so.
  */
-
-/** A literal private or link-local address (kept here so this file imports nothing). */
-function privateAddress (a: string): boolean {
-  const m = /^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/.exec(a)
-  if (m) {
-    const [o1, o2] = [Number(m[1]), Number(m[2])]
-    return o1 === 10 || (o1 === 172 && o2 >= 16 && o2 <= 31) || (o1 === 192 && o2 === 168) || (o1 === 169 && o2 === 254)
-  }
-  return /^(fc|fd|fe80)/i.test(a) && a.includes(':')
-}
 
 export interface CameraUrlContext {
   /** The page's own address (`document.URL`). */
@@ -53,8 +43,9 @@ export function resolveCameraUrl (raw: string, ctx: CameraUrlContext): CameraUrl
   const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase()
   const known = (ctx.printerHosts ?? []).some(h => h.toLowerCase() === host)
   const sameHost = !!printer && printer.hostname.toLowerCase() === host
-  const webcamRoute = (privateAddress(host) || host.endsWith('.local')) && (url.port === '' || url.port === '80') && /^\/webcam/i.test(url.pathname)
-  if (printer?.protocol === 'https:' && (known || sameHost || webcamRoute) && (url.port === '' || url.port === '80')) {
+  // Only this printer's own host or an address it reported moves onto the secure origin: another printer on the same
+  // network answers on its own /webcam/ route, and that stays blocked.
+  if (printer?.protocol === 'https:' && (known || sameHost) && (url.port === '' || url.port === '80')) {
     const moved = new URL(`${url.pathname}${url.search}${url.hash}`, printer.origin)
     return { blocked: false, url: moved }
   }
