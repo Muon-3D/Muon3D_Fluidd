@@ -21,7 +21,9 @@ export default class HlsstreamCamera extends Mixins(CameraMixin) {
   hls: Hls | null = null
 
   startPlayback () {
-    const url = this.buildAbsoluteUrl(this.camera.stream_url || '').toString()
+    const address = this.buildAbsoluteUrl(this.camera.stream_url || '')
+    if (!address) return
+    const url = address.toString()
 
     if (Hls.isSupported()) {
       this.hls?.destroy()

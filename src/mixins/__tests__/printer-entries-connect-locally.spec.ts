@@ -239,7 +239,7 @@ describe('Connect locally on the hosted page (KAN-2529, KAN-5459)', () => {
 })
 
 describe('By-address dialling while connected (secure-route review fix)', () => {
-  const active = (): DirectoryEntry => ({ ...entry(NAME), active: true, host: '192.168.1.20' } as DirectoryEntry)
+  const active = (): DirectoryEntry => ({ ...entry(NAME), active: 'cloud', host: '192.168.1.20' } as DirectoryEntry)
   const connected = (apiUrl: string) => ({ ...component(), $store: { state: { config: { apiUrl }, socket: { open: true, ready: true } } } })
 
   it('on the secure name it does not dial the address', async () => {

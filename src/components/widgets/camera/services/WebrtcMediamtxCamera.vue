@@ -266,7 +266,7 @@ export default class WebrtcMediamtxCamera extends Mixins(CameraMixin) {
           throw new Error(`bad status code ${res.status}`)
       }
 
-      this.sessionUrl = new URL(res.headers.get('location') ?? '', this.baseUrl).toString()
+      this.sessionUrl = new URL(res.headers.get('location') ?? '', this.baseUrl ?? undefined).toString()
 
       const sdp = await res.text()
 
@@ -281,6 +281,8 @@ export default class WebrtcMediamtxCamera extends Mixins(CameraMixin) {
   get baseUrl () {
     const baseUrl = this.buildAbsoluteUrl(this.camera.stream_url || '')
 
+    if (!baseUrl) return null
+
     if (!baseUrl.pathname.endsWith('/')) {
       baseUrl.pathname += '/'
     }
@@ -289,7 +291,11 @@ export default class WebrtcMediamtxCamera extends Mixins(CameraMixin) {
   }
 
   startPlayback () {
-    this.whepUrl = new URL('whep', this.baseUrl).toString()
+    const baseUrl = this.baseUrl
+
+    if (!baseUrl) return
+
+    this.whepUrl = new URL('whep', baseUrl).toString()
 
     this.loadStream()
   }

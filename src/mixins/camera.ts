@@ -104,10 +104,11 @@ export default class CameraMixin extends Vue {
     }
   }
 
-  buildAbsoluteUrl (url: string) {
+  buildAbsoluteUrl (url: string): URL | null {
     const resolved = resolveCameraUrl(url, cameraContext(this.$store.state))
-    // An http address on the https page is never loaded: nothing is asked of it (the page says so instead).
-    return resolved.blocked ? new URL('about:blank') : resolved.url
+    // An http address on the https page is never loaded: null, so nothing is played or asked of it (the page says so
+    // instead).
+    return resolved.blocked ? null : resolved.url
   }
 
   startPlayback () {
