@@ -20,6 +20,7 @@ import type { InstanceConfig } from '@/store/config/types'
 import { httpClientActions } from '@/api/httpClientActions'
 import { cloudState, reachablePrinters } from '@/services/muon-cloud/state'
 import { isManagedApiUrl } from '@/services/muon-cloud/origin'
+import { connectedByAddress } from '@/services/muon-cloud/direct-address-state'
 import { discoveryState, instanceFor, mdnsHostFor } from '@/services/muon-cloud/discovery'
 import { setActiveSlugSource, setForeignSlugSource } from '@/router/printerSlugSource'
 import { foreignRegistry, foreignSlug } from '@/services/foreign-printers/registry'
@@ -302,6 +303,10 @@ export function preferSavedPrinterFor (pathname: string, storageKey: string): vo
 
 let opening: string | null = null
 
+function hostnameOf (url: string): string | null {
+  try { return new URL(url).hostname } catch { return null }
+}
+
 /** How a printer is opened: `services/muon-cloud/activate`, handed in by main.ts. */
 export interface PrinterOpeners {
   activateLocalPrinter: (instance: InstanceConfig) => Promise<boolean>
@@ -335,8 +340,10 @@ export async function openPrinterAt (slug: string): Promise<boolean> {
     if (target.kind === 'local') {
       // A saved http address is never connected by itself from the https site (the address in the bar, a reload, a
       // saved route): even the probe is an http request, and the tab loses its lock ("Not secure"). It is opened by
-      // the person, from the printer's tile, which tries the secure name first.
-      if (location.protocol === 'https:' && /^http:/i.test(target.instance.apiUrl)) return false
+      // the person, from the printer's tile, which tries the secure name first. The one exception: this browser
+      // connected this printer by this very address (its secure name did not resolve), so a reload or a deep link
+      // reconnects the same way.
+      if (location.protocol === 'https:' && /^http:/i.test(target.instance.apiUrl) && !connectedByAddress(target.instance.endpointId, hostnameOf(target.instance.apiUrl))) return false
       return await openers.activateLocalPrinter(target.instance)
     }
     await openers.activateCloudPrinter(target.printerId)

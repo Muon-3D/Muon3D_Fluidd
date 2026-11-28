@@ -202,6 +202,10 @@ test.describe('The by-address route', () => {
     await expect.poll(async () => (await lanAsks(page)).some(a => a.url.startsWith(`ws://${IP}/websocket`)), { timeout: 30_000 }).toBe(true)
     await allPrinters(page)
     await expect(page.locator('.tile').filter({ hasText: /Boxwood/i }).first()).toContainText('(by address, not encrypted)', { timeout: 30_000 })
+    // A reload (or a deep link) while the secure name still does not resolve reconnects by the same address, with no click.
+    await page.reload()
+    await ready(page)
+    await expect.poll(async () => (await lanAsks(page)).some(a => a.url.startsWith(`ws://${IP}/websocket`)), { timeout: 30_000 }).toBe(true)
   })
 
   test('on the secure name the printer is not labelled "not encrypted"', async ({ page, account }) => {
