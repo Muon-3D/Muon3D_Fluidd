@@ -237,3 +237,20 @@ describe('Connect locally on the hosted page (KAN-2529, KAN-5459)', () => {
     expect(action(c, entry(null))).toMatchObject({ disabled: true })
   })
 })
+
+describe('By-address dialling while connected (secure-route review fix)', () => {
+  const active = (): DirectoryEntry => ({ ...entry(NAME), active: true, host: '192.168.1.20' } as DirectoryEntry)
+  const connected = (apiUrl: string) => ({ ...component(), $store: { state: { config: { apiUrl }, socket: { open: true, ready: true } } } })
+
+  it('on the secure name it does not dial the address', async () => {
+    const c = connected(`https://${NAME}`)
+    expect(await methods.connectByAddressFor.call(c, active(), 'p1')).toEqual({ ok: false, why: 'failed' })
+    expect(direct).not.toHaveBeenCalled()
+  })
+
+  it('on the cloud or relay route (also https) Connect locally still tries the address', async () => {
+    const c = connected('https://relay.muon3d.com/p/p1')
+    await methods.connectByAddressFor.call(c, active(), 'p1')
+    expect(direct).toHaveBeenCalled()
+  })
+})

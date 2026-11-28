@@ -51,6 +51,7 @@ import { bluetoothSupport } from '@/services/muon-ble/webBluetooth'
 import { isOpenableAddr, localRoute, mdnsHostFromName, type LocalRoute } from '@/services/muon-cloud/local-route'
 import { lanPrinterAccess, type AccessAsk, type AccessClient } from '@/services/muon-access/api'
 import { requestRefused } from '@/services/managed-transport/refusal'
+import { printerName } from '@/services/secure-origin'
 
 /**
  * The longest a row stays busy with one open. The slowest open is bounded
@@ -236,6 +237,11 @@ async function afterBluetoothPick (vm: any, heard: NearbyPrinter | null) {
     return
   }
   vm.notice = `${heard.display || heard.localName || 'That printer'} was found over Bluetooth. It is listed with the printers found nearby.`
+}
+
+/** Whether the address Control is connected to is a printer's secure name (not the cloud or relay route, not an IP). */
+function onSecureName (apiUrl: unknown): boolean {
+  try { return printerName(new URL(String(apiUrl ?? '')).hostname) !== null } catch { return false }
 }
 
 @Component
@@ -802,8 +808,10 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
    */
   async connectByAddressFor (e: DirectoryEntry, id: string | null | undefined): Promise<DirectResult> {
     let direct = { ok: false, why: 'unsupported' } as DirectResult
-    // The secure name is up for this printer: by-address dialling stops. The two routes never mix on one page.
-    if (e.active && /^https:/i.test(String(this.$store.state.config?.apiUrl ?? '')) && this.$store.state.socket?.open) return { ok: false, why: 'failed' }
+    // The printer's secure name is up (the apiUrl host is `<label>.muonlan.net`): by-address dialling stops, the two
+    // routes never mix on one page. The cloud or relay route is https too, and does not stop it: Connect locally
+    // must still try the address.
+    if (e.active && this.$store.state.socket?.open && onSecureName(this.$store.state.config?.apiUrl)) return { ok: false, why: 'failed' }
     // The service's list may lack the printer (a reset one): what it reported over a session now open, every address
     // saved for it, and the one this browser last connected by are tried after the listed ones.
     if (id && this.$store.state.server?.system_info?.network && (e.active || bluetoothCarrying(id))) {
