@@ -47,6 +47,8 @@ export default class WebrtcGo2RtcCamera extends Mixins(CameraMixin) {
 
     const url = this.buildAbsoluteUrl(this.camera.stream_url || '')
 
+    if (!url) return
+
     const socketUrl = new URL('api/ws' + url.search, url)
 
     socketUrl.protocol = socketUrl.protocol === 'https:'

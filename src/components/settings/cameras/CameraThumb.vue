@@ -34,6 +34,7 @@
 <script lang="ts">
 import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
 import type { WebcamConfig } from '@/store/webcams/types'
+import { cameraContext, resolveCameraUrl } from '@/services/camera/secure-url'
 
 /** How often a thumbnail asks for a new picture. */
 const REFRESH_MS = 5000
@@ -60,7 +61,10 @@ export default class CameraThumb extends Vue {
     const address = this.camera.snapshot_url
     if (!address) return ''
     try {
-      const url = new URL(address, document.URL)
+      const resolved = resolveCameraUrl(address, cameraContext(this.$store.state))
+      // An http address that cannot be made secure is not loaded on the https page.
+      if (resolved.blocked) return ''
+      const url = resolved.url
       url.searchParams.set('cacheBust', String(this.tick))
       return url.toString()
     } catch {

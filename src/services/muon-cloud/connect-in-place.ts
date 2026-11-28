@@ -23,6 +23,7 @@ import { cloudState, dropCloudConnection, rememberBluetoothOnly } from './state'
 import { discoveryState, lanFetch, localNetworkPermission } from './discovery'
 import { mdnsHostFromName, openableAddr } from './local-route'
 import { connectByAddress, directCandidates } from './direct-address'
+import { rememberByAddress } from './direct-address-state'
 import { slugForMdnsHost } from '@/services/printer-pages/slug'
 import { isPrinter, nearbyState, permittedPrinterFor, type NearbyPrinter } from '@/services/muon-ble/nearby'
 import { heardRecently } from '@/services/muon-ble/heard'
@@ -133,7 +134,10 @@ export async function connectInPlace (o: { name: string, label: string, endpoint
   if (!instance) return { ok: false, why: 'bad-name' }
   const reach = await probeSecureApi(o.name)
   if (reach !== 'reached') return { ok: false, why: reach }
-  return (await activateLocalPrinter(instance, o.printerId ?? o.endpointId ?? null)) ? { ok: true } : { ok: false, why: 'failed' }
+  if (!(await activateLocalPrinter(instance, o.printerId ?? o.endpointId ?? null))) return { ok: false, why: 'failed' }
+  // The secure name works again: a reload goes to it, not to the address used while it did not.
+  rememberByAddress(o.printerId ?? o.endpointId, null)
+  return { ok: true }
 }
 
 export interface OpenOnNetwork {

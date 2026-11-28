@@ -22,7 +22,9 @@ export default class IframeCamera extends Mixins(CameraMixin) {
   cameraIFrameSource = ''
 
   startPlayback () {
-    const url = this.buildAbsoluteUrl(this.camera.stream_url || '').toString()
+    const address = this.buildAbsoluteUrl(this.camera.stream_url || '')
+    if (!address) return
+    const url = address.toString()
 
     this.cameraIFrameSource = url
 

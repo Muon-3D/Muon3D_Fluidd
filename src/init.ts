@@ -1,4 +1,5 @@
 import Vue from 'vue'
+import { connectedByAddress } from '@/services/muon-cloud/direct-address-state'
 import store from './store'
 import { consola } from 'consola'
 import { Globals } from './globals'
@@ -120,6 +121,10 @@ export const startingPrinter = async (
   return ownApi
 }
 
+const hostnameOf = (url: string): string | null => {
+  try { return new URL(url).hostname } catch { return null }
+}
+
 export const getApiConfig = async (hostConfig: HostConfig): Promise<ApiConfig | InstanceConfig> => {
   // Local storage load
   if (Globals.LOCAL_INSTANCES_STORAGE_KEY in localStorage) {
@@ -127,8 +132,9 @@ export const getApiConfig = async (hostConfig: HostConfig): Promise<ApiConfig | 
     if (instances && instances.length) {
       for (const config of instances) {
         // I-133: a saved plain-http printer is never connected by itself from the
-        // https site (mixed content drops the lock). It opens on a click.
-        if (config.active && !(document.location.protocol === 'https:' && /^http:/i.test(config.apiUrl))) {
+        // https site (mixed content drops the lock). It opens on a click, except the one this browser connected by
+        // address (its secure name did not resolve): a reload reconnects the same way.
+        if (config.active && !(document.location.protocol === 'https:' && /^http:/i.test(config.apiUrl) && !connectedByAddress(config.endpointId, hostnameOf(config.apiUrl)))) {
           consola.debug('API Config from Local Storage', config)
           return startingPrinter(config, ownEndpoint(hostConfig))
         }

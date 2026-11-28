@@ -1,4 +1,5 @@
 import vuetify from '@/plugins/vuetify'
+import { isPrinterSecureOrigin } from '@/services/secure-origin'
 import type { ActionTree } from 'vuex'
 import type { ConfigState, SaveByPath, InitConfig, InstanceConfig, UiSettings, ThemeConfig } from './types'
 import type { RootState } from '../types'
@@ -71,6 +72,10 @@ export const actions: ActionTree<ConfigState, RootState> = {
   },
 
   async discoverLanInstances ({ commit }) {
+    // muon/lan-printers.json is the printer's own file. An https page the printer does not serve itself (the hosted
+    // site, or any other host) has none, so it is never asked for there (it only logged a 404 in the console).
+    // Control served by the printer, over http or on its own secure name, is unchanged.
+    if (location.protocol === 'https:' && !isPrinterSecureOrigin()) return
     try {
       const response = await fetch(`${import.meta.env.BASE_URL}muon/lan-printers.json`, {
         cache: 'no-store'

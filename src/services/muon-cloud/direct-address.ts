@@ -15,7 +15,7 @@
  */
 import type { InstanceConfig } from '@/store/config/types'
 import { activateLocalPrinter } from './activate'
-import { directAddressState } from './direct-address-state'
+import { directAddressState, rememberByAddress } from './direct-address-state'
 import { isOwnHotspot, lanFetch, localNetworkPermission } from './discovery'
 
 /** Said before Chrome asks its one-time local network question, so the question makes sense. */
@@ -165,6 +165,7 @@ export async function connectByAddress (o: {
     const instance = directInstance(addr, o.label, o.endpointId ?? o.printerId)
     if (await activateLocalPrinter(instance, o.printerId ?? o.endpointId ?? null)) {
       directAddressState.host = addr
+      rememberByAddress(o.printerId ?? o.endpointId, addr)
       return { ok: true, host: addr }
     }
     return { ok: false, why: 'failed' }
